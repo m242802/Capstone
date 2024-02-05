@@ -1,0 +1,80 @@
+import sys
+import folium
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QLabel
+from PyQt5.QtWebEngineWidgets import QWebEngineView
+from geopy.distance import geodesic
+
+class MapWidget(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+
+        self.layout = QVBoxLayout(self.central_widget)
+
+        self.webview = QWebEngineView()
+        self.layout.addWidget(self.webview)
+
+        self.map = folium.Map(location=[0, 0], zoom_start=2)
+        self.webview.setHtml(self.map._repr_html_())
+
+        self.icons = []
+        self.distance_label = QLabel("Distance: N/A", self)
+        self.layout.addWidget(self.distance_label)
+
+        self.dragging_icon = None
+
+        self.add_icon_button = QPushButton("Add Icon", self)
+        self.add_icon_button.clicked.connect(self.add_icon)
+        self.layout.addWidget(self.add_icon_button)
+
+    def add_icon(self):
+        icon_location = [0, 0]  # Initial location
+        marker = folium.Marker(location=icon_location, draggable=True)
+        marker.add_to(self.map)
+
+        self.icons.append(marker)
+        self.update_map_html()
+
+    def update_map_html(self):
+        self.webview.setHtml(self.map._repr_html_())
+
+    def mousePressEvent(self, event):
+        if event.button() == 1:  # Left mouse button
+            for icon in self.icons:
+                location = icon.options['location']
+                x, y = event.x(), event.y()
+                icon_x, icon_y = self.map.location_to_xy(location[0], location[1])
+
+                if (
+                    icon_x - 15 <= x <= icon_x + 15 and
+                    icon_y - 30 <= y <= icon_y
+                ):
+                    self.dragging_icon = icon
+
+    def mouseMoveEvent(self, event):
+        if self.dragging_icon is not None:
+            x, y = event.x(), event.y()
+            lat, lon = self.map.xy_to_location(x, y)
+            self.dragging_icon.location = [lat, lon]
+            self.update_map_html()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == 1:  # Left mouse button
+            self.dragging_icon = None
+            self.calculate_distance()
+
+    def calculate_distance(self):
+        if len(self.icons) >= 2:
+            (lat1, lon1), (lat2, lon2) = [icon.options['location'] for icon in self.icons[-2:]]
+            distance = geodesic((lat1, lon1), (lat2, lon2)).kilometers
+            self.distance_label.setText(f"Distance: {distance:.2f} km")
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = MapWidget()
+    window.setGeometry(100, 100, 800, 600)
+    window.show()
+    sys.exit(app.exec_())
